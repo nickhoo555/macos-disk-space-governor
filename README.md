@@ -7,7 +7,11 @@ A community-installable Agent Skill for safely auditing and governing scarce mac
 Install the skill with the Skills CLI:
 
 ```bash
-npx skills add <owner>/macos-disk-space-governor --skill macos-disk-space-governor
+npx skills add -g nickhoo555/macos-disk-space-governor --skill macos-disk-space-governor
+```
+
+```bash
+pnpm dlx skills add -g nickhoo555/macos-disk-space-governor --skill macos-disk-space-governor
 ```
 
 For a local checkout:
