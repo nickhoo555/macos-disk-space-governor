@@ -1,0 +1,7 @@
+interface:
+  display_name: "macOS Disk Space Governor"
+  short_description: "Safe macOS internal storage cleanup and archiving"
+  default_prompt: "Use $macos-disk-space-governor to audit my Mac internal disk and propose a safe cleanup or archive plan."
+
+policy:
+  allow_implicit_invocation: true
