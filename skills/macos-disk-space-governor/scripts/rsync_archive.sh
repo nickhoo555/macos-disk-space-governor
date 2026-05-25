@@ -3,12 +3,12 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: rsync_archive.sh --source PATH --dest /Volumes/<disk-or-share>/<archive-root> [--apply] [--allow-same-volume]
+用法：rsync_archive.sh --source PATH --dest /Volumes/<disk-or-share>/<archive-root> [--apply] [--allow-same-volume]
 
-Copies SOURCE into DEST/<basename SOURCE>/ with rsync. Defaults to dry-run.
-This script never deletes the source. Remove originals only after separate confirmation.
+用 rsync 把 SOURCE 复制到 DEST/<SOURCE 文件名>/。默认 dry-run。
+此脚本永远不删除源文件；删除源文件必须单独确认。
 
-Examples:
+示例：
   rsync_archive.sh --source "$HOME/Downloads/Old exports" --dest "/Volumes/NAS/Mac-Archive/2026"
   rsync_archive.sh --source "$HOME/Downloads/Old exports" --dest "/Volumes/NAS/Mac-Archive/2026" --apply
 USAGE
@@ -32,7 +32,7 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       usage; exit 0 ;;
     *)
-      echo "Unknown argument: $1" >&2; usage; exit 2 ;;
+      echo "未知参数：$1" >&2; usage; exit 2 ;;
   esac
 done
 
@@ -42,30 +42,30 @@ if [[ -z "$SRC" || -z "$DEST_ROOT" ]]; then
 fi
 
 if [[ ! -e "$SRC" ]]; then
-  echo "Source does not exist: $SRC" >&2
+  echo "源路径不存在：$SRC" >&2
   exit 1
 fi
 
 case "$DEST_ROOT" in
   /Volumes/*) ;;
   *)
-    echo "Destination must be under /Volumes/... to reduce risk of archiving back to the internal disk: $DEST_ROOT" >&2
+    echo "目标必须位于 /Volumes/... 下，避免误归档回内置盘：$DEST_ROOT" >&2
     exit 1 ;;
 esac
 
 VOLUME_NAME=$(printf '%s' "$DEST_ROOT" | awk -F/ '{print $3}')
 VOLUME_ROOT="/Volumes/$VOLUME_NAME"
 if [[ -z "$VOLUME_NAME" || ! -d "$VOLUME_ROOT" ]] || ! mount | grep -F " on $VOLUME_ROOT" >/dev/null 2>&1; then
-  echo "Destination volume does not appear mounted: $VOLUME_ROOT" >&2
-  echo "Mount the external disk or SMB share first, then rerun." >&2
+  echo "目标卷看起来没有挂载：$VOLUME_ROOT" >&2
+  echo "请先挂载外接盘或 SMB 共享，再重新运行。" >&2
   exit 1
 fi
 
 SRC_DEVICE=$(df -P "$SRC" 2>/dev/null | awk 'NR==2 {print $1}')
 DEST_DEVICE=$(df -P "$VOLUME_ROOT" 2>/dev/null | awk 'NR==2 {print $1}')
 if [[ "$ALLOW_SAME_VOLUME" -eq 0 && -n "$SRC_DEVICE" && -n "$DEST_DEVICE" && "$SRC_DEVICE" == "$DEST_DEVICE" ]]; then
-  echo "Source and destination appear to be on the same filesystem ($SRC_DEVICE)." >&2
-  echo "Use --allow-same-volume only if this is intentional." >&2
+  echo "源路径和目标路径似乎在同一个文件系统上（$SRC_DEVICE）。" >&2
+  echo "只有在确实有意这样做时，才使用 --allow-same-volume。" >&2
   exit 1
 fi
 
@@ -77,7 +77,7 @@ else
   RSYNC_BIN=$(command -v rsync || true)
 fi
 if [[ -z "$RSYNC_BIN" ]]; then
-  echo "rsync not found. Install with: brew install rsync" >&2
+  echo "未找到 rsync。请安装：brew install rsync" >&2
   exit 1
 fi
 
@@ -131,16 +131,16 @@ BASE=$(basename "$SRC")
 DEST_FINAL="$DEST_ROOT/$BASE"
 
 cat <<EOF_STATUS
-Mode:        $([[ "$APPLY" -eq 1 ]] && echo APPLY || echo DRY-RUN)
+模式:        $([[ "$APPLY" -eq 1 ]] && echo 执行 || echo DRY-RUN)
 rsync:      $RSYNC_BIN (${RSYNC_VERSION:-unknown})
-Source:     $SRC
-Destination:$DEST_FINAL
-Source FS:  ${SRC_DEVICE:-unknown}
-Dest FS:    ${DEST_DEVICE:-unknown}
+源路径:      $SRC
+目标路径:    $DEST_FINAL
+源文件系统:  ${SRC_DEVICE:-unknown}
+目标文件系统:${DEST_DEVICE:-unknown}
 EOF_STATUS
 
 if grep -qi 'openrsync' <<<"$RSYNC_VERSION"; then
-  echo "Note: macOS openrsync detected. For richer metadata preservation, install Homebrew rsync: brew install rsync" >&2
+  echo "提示：检测到 macOS openrsync。如需更完整保留元数据，建议安装 Homebrew rsync：brew install rsync" >&2
 fi
 
 if [[ "$APPLY" -eq 1 ]]; then
@@ -159,6 +159,6 @@ fi
 
 cat <<'EOF_DONE'
 
-Done. This script did not delete the source.
-Next: verify archived files from the destination, then request/perform a separately confirmed source removal if desired.
+完成。此脚本没有删除源文件。
+下一步：从目标位置验证归档文件；如果确实要移除源文件，请单独确认后再执行。
 EOF_DONE

@@ -1,20 +1,22 @@
-# macOS disk-space governance playbooks
+# 场景手册
 
-## Safety rules
+## 通用安全规则
 
-- Treat `~/Library`, app libraries, and cloud-sync folders as app-owned unless there is a known supported workflow.
-- Do not manually edit inside `.photoslibrary`, Mail stores, iCloud Drive metadata, Dropbox/OneDrive/Google Drive control folders, Docker disk images, or database directories unless the user explicitly understands the risk.
-- Do not use `rm -rf` as a first-line action. Prefer app UI cleanup, package-manager cleanup, or archive + verify + explicit delete.
-- Keep `ncdu -x` scoped to the internal path being inspected so it does not count mounted SMB shares or external disks.
-- Before archiving to `/Volumes/...`, check `mount`, `df -h`, and destination write access.
+- `~/Library`、app 库、云同步目录默认视为 app 管理，不当作普通文件夹。
+- 不手工改 `.photoslibrary`、Mail、Messages、Keychains、Docker 磁盘镜像、VM、数据库、云盘控制目录。
+- 不把 `rm -rf` 当第一选择。优先 app 内清理、包管理器清理、归档验证后再删除。
+- `ncdu` 默认带 `-x`，避免扫进外置盘或 SMB。
+- 归档到 `/Volumes/...` 前，先检查挂载、空间、写入权限。
+- 软链是永久迁移，不是清理小技巧；只给安全目录使用。
+- 定时任务先 report-only 或 dry-run，不先做删除、移源文件、创建软链。
 
-## Tool setup
+## 工具安装
 
 ```bash
 brew install ncdu rsync
 ```
 
-Read-only scan examples:
+只读扫描：
 
 ```bash
 ncdu -x "$HOME"
@@ -22,101 +24,120 @@ ncdu -x ~/Downloads
 ncdu -x ~/Documents
 ```
 
-System-wide scans may require Full Disk Access for Terminal/Codex and can produce permission errors:
+系统级扫描可能需要给 Terminal / Codex Full Disk Access，也可能需要 `sudo`：
 
 ```bash
 sudo ncdu -x /System/Volumes/Data
 ```
 
-## Non-technical office worker playbook
+## 非技术办公室白领
 
-Default tone: avoid jargon; map findings to human categories.
+### 说人话
 
-Good first targets:
+不要说“清理 inode / cache / symlink”。用这些分类：
 
-1. `~/Downloads`: installers, ZIPs, exports, duplicate PDFs, old screen recordings.
-2. Desktop and Documents: stale project folders, duplicated exports, large media files.
-3. Meeting and chat recordings: Zoom, Teams, Tencent Meeting, Feishu/Lark, WeChat files.
-4. App exports: Keynote/PPT/PDF/video exports that can be archived.
-5. Trash: empty only after confirming there is no recent recovery need.
+- 下载和安装包
+- 桌面临时文件
+- 文档和导出文件
+- 会议录像 / 录屏
+- 图片、视频、压缩包
+- 可以归档但不常打开的旧资料
 
-Usually avoid direct manual cleanup:
+### 优先看哪里
 
-- `~/Library/Mail`, `~/Library/Messages`, `~/Library/Application Support`.
-- Photos library internals. Move the whole Photos library only with Photos closed and with a known restore plan; avoid SMB for active Photos libraries.
-- iCloud Drive, Dropbox, OneDrive, Google Drive internals. Use the app's “remove download / online-only” features when possible.
+1. `~/Downloads`：安装包、ZIP、重复 PDF、旧导出、录屏。
+2. 桌面和文档：项目旧版本、大文件、重复资料。
+3. 会议工具目录：Zoom、Teams、腾讯会议、飞书 / Lark、微信文件。
+4. Keynote / PowerPoint / PDF / 视频导出目录。
+5. 废纸篓：确认近期没有恢复需求后再清空。
 
-Recommended office archive flow:
+### 不建议手工动哪里
 
-1. Create an archive folder on `/Volumes/<ExternalOrShare>/Mac-Archive/<YYYY>/<Category>/`.
-2. Dry-run with `scripts/rsync_archive.sh --source "<folder>" --dest "<archive-root>"`.
-3. Apply with `--apply` after user confirms the dry-run list.
-4. Verify sample files open from the destination.
-5. Only then remove originals manually or with a separately confirmed command.
+- `~/Library/Mail`、`~/Library/Messages`、`~/Library/Application Support`。
+- Photos 照片图库内部；需要迁移时走 Photos 支持的整体迁移流程，且不建议放活跃 SMB。
+- iCloud Drive、Dropbox、OneDrive、Google Drive 内部控制文件；优先用“移除本地下载 / 仅在线”功能。
 
-## Technical engineer playbook
+### 推荐长期方案
 
-Start with read-only triage, then propose targeted cleanup by ecosystem.
+1. 每月或每两周提醒检查一次：`scripts/triage.sh --persona office --target "$HOME"`。
+2. Downloads、会议录像、导出目录用不可软链的周期归档。
+3. 源目录保持真实目录，不替换成软链。
+4. 删除源文件前，先从外置盘 / SMB 打开 3 个样本确认。
 
-Common rebuild/delete candidates:
+## 技术工程师
 
-- Xcode: `~/Library/Developer/Xcode/DerivedData`, old `Archives`, unavailable simulators/runtimes.
-- iOS simulators: `~/Library/Developer/CoreSimulator/Devices` after checking active simulator use.
-- Docker Desktop: unused images/containers/volumes and Docker disk image growth; prefer Docker CLI/UI prune commands over deleting disk images.
-- Node: per-repo `node_modules`, package-manager stores/caches (`pnpm store`, npm/yarn caches) when rebuildable.
-- Java/Android: Gradle caches, Android build outputs and emulator images.
-- Python: virtualenvs, `.tox`, `.venv`, pip/uv caches when rebuildable.
-- Rust/Go: `target`, module/build caches where rebuildable.
-- Homebrew: old downloads and caches; prefer `brew cleanup` and `brew autoremove` after checking.
+### 常见可删除 / 可重建对象
 
-Useful engineer commands after audit, only when appropriate:
+- Xcode：`~/Library/Developer/Xcode/DerivedData`、旧 Archives、不可用 simulator/runtime。
+- iOS Simulator：`~/Library/Developer/CoreSimulator/Devices`，先确认当前不需要。
+- Docker Desktop：未使用镜像、容器、volume；优先 Docker CLI/UI prune，不直接删 disk image。
+- Node：repo 内 `node_modules`、pnpm/npm/yarn cache，可重建时处理。
+- Java / Android：Gradle cache、Android build output、旧 emulator image。
+- Python：`.venv`、`.tox`、pip/uv cache，可重建时处理。
+- Rust / Go：`target`、module/build cache。
+- Homebrew：优先 `brew cleanup --dry-run`，确认后 `brew cleanup`。
+
+### 工程师长期治理
+
+- 能用工具配置目录或环境变量时，优先于软链。
+- 冲刺期每周看一次，稳定期每月看一次。
+- 交付物、旧包、日志、导出文件适合周期归档。
+- 模型、数据集、只读素材库可评估软链迁移。
+- 活跃源码仓库、数据库、Docker disk image、VM、高频小文件目录不建议放 SMB。
+
+可用命令示例：
 
 ```bash
 brew cleanup --dry-run
 brew cleanup
 xcrun simctl delete unavailable
-# Docker examples: inspect first, prune only with user confirmation
+
 docker system df
+# prune 前必须确认
 docker system prune
 ```
 
-For repo trees, find large generated directories before deleting:
+寻找大生成目录：
 
 ```bash
 find "$HOME" -maxdepth 6 -name node_modules -type d -prune 2>/dev/null
 find "$HOME" -maxdepth 6 \( -name .venv -o -name target -o -name build -o -name dist \) -type d -prune 2>/dev/null
 ```
 
-## External storage guidance
+## 外置存储
 
-### External disk
+### 外接磁盘
 
-- Prefer APFS for Mac-only archive because it preserves macOS metadata better.
-- Use exFAT only for cross-platform exchange; warn about metadata/permission limitations.
-- Keep at least one additional backup if the external disk becomes the only copy.
+- Mac-only 归档优先 APFS，保留元数据更好。
+- 跨平台交换可用 exFAT，但提醒权限 / 元数据限制。
+- 如果外置盘成了唯一副本，就还没完成备份。
 
-### SMB private cloud
+### SMB 私有云
 
-- Confirm it is mounted under `/Volumes/<share>` and `df -h /Volumes/<share>` shows the network filesystem.
-- Use archives for cold files; avoid live app libraries, active source trees with many small files, virtual machines, and databases on SMB unless the user accepts performance and locking risks.
-- Network copies can be interrupted; use `rsync` so reruns resume/repair the archive.
+- 确认挂载在 `/Volumes/<share>`，并用 `df -h /Volumes/<share>` 看文件系统和剩余空间。
+- SMB 适合冷归档，不适合活体 app library、数据库、VM、Docker disk image、活跃仓库。
+- 网络会中断，所以用 `rsync`，让任务可重跑、可修复。
 
-## Reporting template
+## 报告模板
 
 ```markdown
-## Disk-space plan
+## 内置盘治理方案
 
-Internal disk: <free>/<total> free. Main pressure: <summary>.
+一句话判断：<内置盘当前是紧急 / 观察 / 健康；主要压力来自哪里>。
 
-| Priority | Item | Type | Est. space | Action | Risk |
+| 优先级 | 路径 / 类别 | 术 | 预计空间 | 动作 | 风险 |
 |---|---|---:|---:|---|---|
-| 1 | <path/category> | Archive/Delete/Rebuild | <size> | <command or app workflow> | Low/Med/High |
+| 1 | <path/category> | 提醒检查 / 一次性归档 / 周期归档 / 软链迁移 / 删除重建 | <size> | <命令或 app 操作> | 低/中/高 |
 
-Confirmation needed before destructive steps:
-1. <copy/apply command>
-2. <delete/manual removal step, if any>
+确认门：
+1. <dry-run 命令>
+2. <apply / 定时 / 删除 / 软链命令，如有>
 
-Verification:
-- Open 3 sample archived files from the destination.
-- Rerun `du`/`ncdu` or `df -h` to confirm reclaimed space.
+验证：
+- 从目标盘打开 3 个样本文件。
+- 软链迁移时确认原路径可访问、备份目录存在。
+- 重新运行 `df -h`、`du` 或 `ncdu -x` 确认释放效果。
+
+回滚：
+- <如何从归档恢复，或如何移除软链并恢复备份>。
 ```
